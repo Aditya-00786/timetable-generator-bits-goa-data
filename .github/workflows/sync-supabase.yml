@@ -1,0 +1,55 @@
+name: Sync CSV to Supabase
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'data/**.csv'
+      - 'data/semester.txt'
+  workflow_dispatch:
+    inputs:
+      semester:
+        description: 'Semester (e.g. 2025-S2). Leave blank to use data/semester.txt'
+        required: false
+
+jobs:
+  update-database:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Resolve semester
+        id: sem
+        run: |
+          INPUT="${{ github.event.inputs.semester }}"
+          if [ -n "$INPUT" ]; then
+            SEM="$INPUT"
+          else
+            SEM="$(tr -d '[:space:]' < data/semester.txt)"
+          fi
+          if [ -z "$SEM" ]; then
+            echo "No semester provided and data/semester.txt is empty." >&2
+            exit 1
+          fi
+          echo "value=$SEM" >> "$GITHUB_OUTPUT"
+          echo "Using semester: $SEM"
+
+      - name: Run Sync Script
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          IMPORT_SEMESTER: ${{ steps.sem.outputs.value }}
+          # Public production URL — used only to warm the cache after import (best-effort).
+          SITE_URL: https://timetable-generator-bits-goa.vercel.app
+        run: node scripts/sync-database.js

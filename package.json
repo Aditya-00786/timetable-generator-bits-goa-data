@@ -1,0 +1,16 @@
+{
+  "name": "timetable-generator-bits-goa-data",
+  "version": "1.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Public timetable data and sync pipeline for the BITS Goa Timetable Generator.",
+  "license": "MIT",
+  "scripts": {
+    "validate": "node scripts/validate-data.mjs",
+    "sync": "node scripts/sync-database.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.3",
+    "papaparse": "^5.5.4"
+  }
+}
