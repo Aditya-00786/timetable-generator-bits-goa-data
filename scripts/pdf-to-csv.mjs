@@ -344,6 +344,24 @@ async function run() {
     }
   }
 
+  // Occasionally a title is rendered twice in the source (or two sections' identical titles get
+  // merged onto one row through an odd line gap), yielding "X X". Collapse an exact self-repeat.
+  const dedupTitle = (t) => {
+    const s = norm(t);
+    if (s.length % 2 === 1) {
+      const h = (s.length - 1) / 2; // index of the middle char
+      if (s[h] === ' ' && s.slice(0, h) === s.slice(h + 1)) return s.slice(0, h);
+    }
+    return t;
+  };
+  for (const r of rows) r['COURSE TITLE'] = dedupTitle(r['COURSE TITLE']);
+
+  // Some layouts print a course's title only once (not on every section row), leaving other
+  // sections' titles blank. Fill a blank title from another section of the same course.
+  const titleByCourse = new Map();
+  for (const r of rows) { const cn = r['COURSE NO']; if (r['COURSE TITLE'] && !titleByCourse.has(cn)) titleByCourse.set(cn, r['COURSE TITLE']); }
+  for (const r of rows) { if (!r['COURSE TITLE'] && titleByCourse.has(r['COURSE NO'])) r['COURSE TITLE'] = titleByCourse.get(r['COURSE NO']); }
+
   const csv = Papa.unparse({ fields: OUTPUT_COLUMNS, data: rows }, { newline: '\n' });
   fs.writeFileSync(outputPath, csv + '\n');
 
