@@ -32,7 +32,11 @@ The official timetable comes as a PDF. You don't have to convert it by hand:
 - **No clone needed:** upload the PDF into this `data/` folder on GitHub (**Add file → Upload
   files** → commit to a new branch). The **Convert timetable PDF** action turns it into
   `data/timetable.csv` on that branch automatically.
-- **Locally:** `npm install`, then `npm run pdf -- path/to/timetable.pdf`.
+- **Locally:** clone the repo, then:
+  ```bash
+  npm install                              # first time only
+  npm run pdf -- path/to/timetable.pdf     # writes data/timetable.csv
+  ```
 
 The converter skips the instruction/legend pages, removes the repeated page headers, keeps only
 the schema columns (renamed to match), and rejoins wrapped cells. It's best-effort — always

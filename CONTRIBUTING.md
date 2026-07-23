@@ -39,9 +39,12 @@ are two ways to turn it into `data/timetable.csv`:
 
 ### Option B — convert locally
 
-After [getting set up](#getting-set-up):
+Clone the repo, install dependencies, and run the converter:
 
 ```bash
+git clone https://github.com/Aditya-00786/timetable-generator-bits-goa-data.git
+cd timetable-generator-bits-goa-data
+npm install                              # first time only
 npm run pdf -- path/to/timetable.pdf     # writes data/timetable.csv
 ```
 
