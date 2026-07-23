@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write # to report the "validate" status on the bot's commit (see below)
 
 jobs:
   convert:
@@ -42,6 +43,7 @@ jobs:
       - name: Convert PDF → data/timetable.csv (validate, then commit back)
         env:
           SEMESTER_INPUT: ${{ github.event.inputs.semester }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${GITHUB_REF_NAME}" = "main" ]; then
             echo "Refusing to modify the protected main branch — run this on a separate branch."
@@ -93,4 +95,11 @@ jobs:
           if [ -n "$SEM_CHANGED" ]; then MSG="$MSG (semester $SEM)"; fi
           git commit -m "$MSG"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+          # validate-data.mjs already passed above. This commit was pushed with GITHUB_TOKEN, which
+          # does NOT trigger the "Validate data" workflow, so report the required "validate" status
+          # directly on it — otherwise a PR from this branch would wait forever for that check.
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/$(git rev-parse HEAD)" \
+            -f state=success -f context=validate -f "description=Validated by Convert timetable PDF" >/dev/null
+          echo "Reported validate=success on $(git rev-parse HEAD)."
           echo "Committed to ${GITHUB_REF_NAME}."
