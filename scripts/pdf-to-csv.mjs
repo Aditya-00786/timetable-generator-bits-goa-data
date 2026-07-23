@@ -179,6 +179,23 @@ function reparseCluster(tokens) {
   return { lpu, sec, stat };
 }
 
+// From line `i`, walk in one vertical direction (step -1 = up, +1 = down) and return the index of
+// the first course-row (anchor) reached — but stop (return -1) if a gap larger than `threshold`
+// intervenes. A course's own lines are a contiguous chain of small gaps down to its comcode row,
+// while the boundary between courses is a larger gap: so this connects a wrapped line to the
+// course it truly belongs to, no matter how many lines its title spans, and a big gap blocks it
+// from bleeding into the neighbouring course.
+function reachAnchor(items, i, step, threshold) {
+  let j = i;
+  for (;;) {
+    const k = j + step;
+    if (k < 0 || k >= items.length) return -1;
+    if (Math.abs(items[j].y - items[k].y) > threshold) return -1;
+    if (items[k].isAnchor) return k;
+    j = k;
+  }
+}
+
 function finalize(cur, fieldIdx) {
   const out = {};
   for (const f of OUTPUT_COLUMNS) {
@@ -266,51 +283,61 @@ async function run() {
   }
 
   // Pass 2: parse records on every page with the global layout.
+  const titleIdx = fieldIdx['COURSE TITLE'];
   const rows = [];
   for (const { lines, start } of pages) {
-    const recs = [];  // course rows (anchored by a COURSE NO): { y, lines: [{y, assigned}] }
-    const conts = []; // wrapped/continuation lines: { y, assigned }
+    // Turn the page's data lines into items (course rows + wrapped lines), top → bottom.
+    const items = [];
     for (let i = start; i < lines.length; i++) {
       const line = lines[i];
       if (isHeaderLine(line.tokens.map((t) => t.str).join(' '))) continue;
-
       const assigned = cols.map(() => []);
       for (const t of line.tokens) assigned[columnOf(t.x, cols)].push(t);
-
       const cn = assigned[cnIdx].map((t) => t.str).join(' ').trim();
-      if (/^[A-Z]{2,6}\s?[A-Z]?[0-9]{3}/i.test(cn)) recs.push({ y: line.y, lines: [{ y: line.y, assigned }] });
-      else conts.push({ y: line.y, assigned });
+      const isAnchor = /^[A-Z]{2,6}\s?[A-Z]?[0-9]{3}/i.test(cn);
+      items.push({ y: line.y, assigned, isAnchor });
     }
+    if (!items.length) continue;
 
-    // Attach each wrapped line to a course row. Most cells (instructor lists, dates) wrap
-    // DOWNWARD, so they belong to the row just ABOVE (reading order) — attaching them there keeps
-    // long instructor lists from bleeding across the tight rows of a dense multi-section block.
-    // Only the TITLE can be centred on the comcode row (its first line sits above its own row),
-    // so a title-only line goes to the vertically nearest row (with a small bias to "above" so a
-    // normal downward title wrap still stays put).
-    const titleIdx = fieldIdx['COURSE TITLE'];
-    const BIAS = 4;
-    for (const c of conts) {
-      let above = null, below = null;
-      for (const r of recs) {
-        if (r.y >= c.y) { if (!above || r.y < above.y) above = r; }
-        else if (!below || r.y > below.y) below = r;
-      }
+    // A gap noticeably bigger than the usual line spacing marks a course boundary.
+    const gaps = [];
+    for (let i = 0; i < items.length - 1; i++) { const g = Math.abs(items[i].y - items[i + 1].y); if (g > 0) gaps.push(g); }
+    gaps.sort((a, b) => a - b);
+    const median = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 10;
+    const threshold = median * 1.3;
+
+    const recByIdx = new Map();
+    const order = [];
+    items.forEach((it, idx) => { if (it.isAnchor) { const rec = { lines: [it] }; recByIdx.set(idx, rec); order.push(rec); } });
+
+    items.forEach((it, idx) => {
+      if (it.isAnchor) return;
       const used = new Set();
-      c.assigned.forEach((toks, k) => { if (toks.length) used.add(k); });
+      it.assigned.forEach((toks, k) => { if (toks.length) used.add(k); });
       const titleOnly = used.size > 0 && [...used].every((k) => k === titleIdx);
 
-      let target = above || below;
-      if (titleOnly && above && below && Math.abs(c.y - below.y) < Math.abs(c.y - above.y) - BIAS) {
-        target = below;
+      let target = -1;
+      if (titleOnly) {
+        // A title can be centred on its row, so grow to the nearest course row REACHABLE through
+        // small gaps (contiguity) in either direction; a big gap blocks bleeding to the neighbour.
+        const up = reachAnchor(items, idx, -1, threshold);
+        const down = reachAnchor(items, idx, +1, threshold);
+        if (up >= 0 && down >= 0) target = Math.abs(it.y - items[up].y) <= Math.abs(it.y - items[down].y) ? up : down;
+        else if (up >= 0) target = up;
+        else if (down >= 0) target = down;
+        else { let bd = Infinity; items.forEach((a, ai) => { if (a.isAnchor) { const d = Math.abs(it.y - a.y); if (d < bd) { bd = d; target = ai; } } }); }
+      } else {
+        // Instructor lists / dates wrap downward — attach to the course row just above.
+        for (let k = idx - 1; k >= 0; k--) if (items[k].isAnchor) { target = k; break; }
+        if (target < 0) for (let k = idx + 1; k < items.length; k++) if (items[k].isAnchor) { target = k; break; }
       }
-      if (target) target.lines.push(c);
-    }
+      if (target >= 0 && recByIdx.has(target)) recByIdx.get(target).lines.push(it);
+    });
 
-    for (const r of recs) {
-      r.lines.sort((a, b) => b.y - a.y); // top → bottom, so wrapped cells read in order
+    for (const rec of order) {
+      rec.lines.sort((a, b) => b.y - a.y); // top → bottom, so wrapped cells read in order
       const perCol = cols.map(() => []);
-      for (const ln of r.lines) for (let k = 0; k < cols.length; k++) perCol[k].push(...ln.assigned[k]);
+      for (const ln of rec.lines) for (let k = 0; k < cols.length; k++) perCol[k].push(...ln.assigned[k]);
       const obj = finalize(perCol, fieldIdx);
       if (obj['COURSE NO']) rows.push(obj);
     }
