@@ -35,18 +35,23 @@ app. The application's front-end source code is maintained separately.
 Spotted an error, or have updated data for a new semester? Contributions are welcome!
 
 1. **Fork** this repo.
-2. **Edit the CSVs** in [`data/`](./data/) following the schema in [`data/README.md`](./data/README.md):
+2. **Clone your fork** and enter the folder:
+   ```bash
+   git clone https://github.com/<your-username>/timetable-generator-bits-goa-data.git
+   cd timetable-generator-bits-goa-data
+   ```
+3. **Edit the CSVs** in [`data/`](./data/) following the schema in [`data/README.md`](./data/README.md):
    - `data/timetable.csv` — the main timetable (required)
    - `data/midsem.csv`, `data/compre.csv` — optional exam-date overrides
    - `data/semester.txt` — the semester label (update it when a new semester starts)
-3. **Validate locally** (optional but recommended):
+4. **Validate locally** (optional but recommended):
    ```bash
    npm install
    npm run validate
    ```
-4. **Open a pull request.** A **"Validate data"** check runs automatically and flags any
+5. **Open a pull request.** A **"Validate data"** check runs automatically and flags any
    formatting issues.
-5. A maintainer reviews and merges. On merge to `main`, the data **syncs to the live app
+6. A maintainer reviews and merges. On merge to `main`, the data **syncs to the live app
    automatically**.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide.

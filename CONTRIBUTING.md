@@ -11,14 +11,23 @@ code changes aren't handled here.)
 - Exam-date overrides in `data/midsem.csv` / `data/compre.csv` (both optional).
 - The semester label in `data/semester.txt` when a new semester begins.
 
+## Getting set up
+
+Fork this repo, then clone your fork and install dependencies:
+
+```bash
+git clone https://github.com/<your-username>/timetable-generator-bits-goa-data.git
+cd timetable-generator-bits-goa-data
+npm install
+```
+
 ## Generating `timetable.csv` from the official PDF
 
 Each semester the timetable is released as a PDF. Instead of exporting to Excel and cleaning it
 up by hand, use the converter:
 
 ```bash
-npm install                                  # first time only
-npm run pdf -- path/to/timetable.pdf         # writes data/timetable.csv
+npm run pdf -- path/to/timetable.pdf     # writes data/timetable.csv
 ```
 
 It automatically skips the title/instruction/legend pages, drops the header row repeated on
@@ -32,7 +41,7 @@ steps below to validate and open a PR. (After generating, you'll usually just bu
 
 ## How to submit a change
 
-1. **Fork** this repository and create a branch.
+1. Create a branch on your fork (see [Getting set up](#getting-set-up) above).
 2. **Edit the CSV(s)** in [`data/`](./data/) — or generate `timetable.csv` with the converter
    above. The headers must match the schema **exactly**
    (case- and space-sensitive) — see [`data/README.md`](./data/README.md) for every column.
