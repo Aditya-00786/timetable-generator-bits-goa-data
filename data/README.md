@@ -31,9 +31,9 @@ The official timetable comes as a PDF. You don't have to convert it by hand:
 
 - **No clone needed:** upload the PDF into this `data/` folder on GitHub (**Add file → Upload
   files** → commit to a new branch). The **Convert timetable PDF** action turns it into
-  `data/timetable.csv` on that branch automatically. To also roll over the semester, name the
-  file like `timetable-2025-S2.pdf` (or run the action from the **Actions** tab and enter the
-  semester); otherwise the current `semester.txt` is kept.
+  `data/timetable.csv` on that branch automatically. The semester (`semester.txt`) is set from the
+  **Actions**-tab input, the **PDF filename** (e.g. `timetable-2025-S2.pdf`), or — failing those —
+  the semester printed on the **PDF's title page**; it's kept unchanged if none apply.
 - **Locally:** clone the repo, then:
   ```bash
   npm install                              # first time only

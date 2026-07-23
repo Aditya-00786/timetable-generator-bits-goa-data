@@ -53,13 +53,20 @@ jobs:
             exit 0
           fi
 
-          # Semester: the workflow_dispatch input wins; otherwise read it from the PDF filename
-          # (e.g. timetable-2025-S2.pdf). Only update data/semester.txt when it actually differs
-          # from the current value — a blank or unchanged semester leaves the file untouched.
+          echo "Converting $PDF → data/timetable.csv"
+          CONV_OUT="$(node scripts/pdf-to-csv.mjs "$PDF" data/timetable.csv)"
+          echo "$CONV_OUT"
+
+          # Semester precedence: workflow_dispatch input > PDF filename (e.g. timetable-2025-S2.pdf)
+          # > the semester printed on the PDF's title page (detected by the converter). Only update
+          # data/semester.txt when it actually differs from the current value — otherwise untouched.
           CUR="$(tr -d '[:space:]' < data/semester.txt 2>/dev/null || true)"
           SEM="$SEMESTER_INPUT"
           if [ -z "$SEM" ]; then
             SEM="$(printf '%s' "$PDF" | grep -oiE '20[0-9]{2}-?S[0-9]' | head -1 || true)"
+          fi
+          if [ -z "$SEM" ]; then
+            SEM="$(printf '%s' "$CONV_OUT" | grep -i 'Detected semester' | grep -oiE '20[0-9]{2}-S[0-9]' | head -1 || true)"
           fi
           if [ -n "$SEM" ]; then
             SEM="$(printf '%s' "$SEM" | tr 'a-z' 'A-Z' | sed -E 's/^(20[0-9]{2})-?(S[0-9])$/\1-\2/')"
@@ -75,8 +82,6 @@ jobs:
             echo "No semester provided — keeping data/semester.txt ('$CUR')."
           fi
 
-          echo "Converting $PDF → data/timetable.csv"
-          node scripts/pdf-to-csv.mjs "$PDF" data/timetable.csv
           node scripts/validate-data.mjs           # fail the run (before committing) if invalid
 
           git rm --quiet "$PDF"                     # remove the source PDF; the CSV is the artifact

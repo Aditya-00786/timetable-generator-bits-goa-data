@@ -217,6 +217,18 @@ function finalize(cur, fieldIdx, cols) {
   return out;
 }
 
+// Detect the semester from the PDF's own title text — e.g. "SECOND SEMESTER 2025-2026" -> "2025-S2"
+// (S1 = first/odd, S2 = second/even; the year is the academic year's start). Title digits are often
+// separate text items, so we match on the space-stripped text. Returns null if not found.
+function detectSemesterFromText(text) {
+  const t = text.toUpperCase().replace(/\s+/g, '');
+  let m = t.match(/(FIRST|SECOND)SEMESTER(20\d\d)[-–—/](20\d\d)/);
+  if (m) return `${m[2]}-${m[1] === 'SECOND' ? 'S2' : 'S1'}`;
+  m = t.match(/SEMESTER(I{1,2})(20\d\d)[-–—/](20\d\d)/); // "SEMESTER II 2025-2026" order
+  if (m) return `${m[2]}-${m[1] === 'II' ? 'S2' : 'S1'}`;
+  return null;
+}
+
 async function run() {
   const data = new Uint8Array(fs.readFileSync(inputPath));
   const doc = await getDocument({ data, verbosity: 0 }).promise;
@@ -226,10 +238,12 @@ async function run() {
   const pages = [];
   let headerTokens = null;
   const allPrimary = [];
+  let docText = '';
 
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
     const content = await page.getTextContent();
+    docText += ' ' + content.items.map((it) => it.str).join(' ');
     const lines = toLines(content.items);
 
     const headerIdx = lines.findIndex((l) => isHeaderLine(l.tokens.map((t) => t.str).join(' ')));
@@ -252,6 +266,9 @@ async function run() {
     for (let i = start; i < lines.length; i++) if (hasComcode(lines[i])) allPrimary.push(lines[i]);
     pages.push({ lines, start });
   }
+
+  const detectedSemester = detectSemesterFromText(docText);
+  if (detectedSemester) console.log(`Detected semester (from title): ${detectedSemester}`);
 
   if (!headerTokens) {
     fs.writeFileSync(outputPath, Papa.unparse({ fields: OUTPUT_COLUMNS, data: [] }) + '\n');

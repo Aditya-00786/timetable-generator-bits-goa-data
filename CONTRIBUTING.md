@@ -37,10 +37,11 @@ are two ways to turn it into `data/timetable.csv`:
 5. Open a **pull request** from that branch to `main` — then jump to step 4 of
    [How to submit a change](#how-to-submit-a-change).
 
-> **Starting a new semester?** Name the PDF with the semester — e.g. `timetable-2025-S2.pdf` —
-> and the action also updates `data/semester.txt`. Without a semester in the filename, the
-> current one is kept. (You can also run **Convert timetable PDF** from the **Actions** tab and
-> type the semester there — leave it blank to keep the current one, just like the sync workflow.)
+> **Starting a new semester?** The semester (`data/semester.txt`) is set from, in order: the
+> **Actions**-tab input → the **PDF filename** (e.g. `timetable-2025-S2.pdf`) → the semester
+> printed on the **PDF's title page** (e.g. "SECOND SEMESTER 2025-2026" → `2025-S2`). It's updated
+> only when it actually changes; if none of those yield one, the current value is kept. So for a
+> normal upload you usually don't need to do anything — it's detected from the PDF.
 
 ### Option B — convert locally
 
