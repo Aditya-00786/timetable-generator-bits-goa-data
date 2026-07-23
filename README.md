@@ -1,9 +1,15 @@
-# <img src="https://timetable-generator-bits-goa.vercel.app/apple-touch-icon.png" alt="" height="30" align="top"> BITS Goa Timetable Generator — Data & Contributions
+<div align="center">
 
-> The public **timetable data** and **contribution hub** for the BITS Goa Timetable Generator.
+<img src="https://timetable-generator-bits-goa.vercel.app/apple-touch-icon.png" width="104" alt="BITS Goa Timetable Generator" />
+
+# BITS Goa Timetable Generator — Data & Contributions
+
+The public **timetable data** and **contribution hub** for the BITS Goa Timetable Generator.
 
 [![Live App](https://img.shields.io/badge/Live-App-black.svg)](https://timetable-generator-bits-goa.vercel.app/)
 [![Validate data](https://github.com/Aditya-00786/timetable-generator-bits-goa-data/actions/workflows/validate-data.yml/badge.svg)](https://github.com/Aditya-00786/timetable-generator-bits-goa-data/actions/workflows/validate-data.yml)
+
+</div>
 
 **🔗 Use the app: https://timetable-generator-bits-goa.vercel.app/**
 
