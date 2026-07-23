@@ -16,6 +16,10 @@ on:
     paths:
       - 'data/**.pdf'
   workflow_dispatch:
+    inputs:
+      semester:
+        description: 'Semester (e.g. 2025-S2). Leave blank to keep the current data/semester.txt.'
+        required: false
 
 permissions:
   contents: write
@@ -36,6 +40,8 @@ jobs:
         run: npm install # full install — the converter needs the pdfjs-dist dev dependency
 
       - name: Convert PDF → data/timetable.csv (validate, then commit back)
+        env:
+          SEMESTER_INPUT: ${{ github.event.inputs.semester }}
         run: |
           if [ "${GITHUB_REF_NAME}" = "main" ]; then
             echo "Refusing to modify the protected main branch — run this on a separate branch."
@@ -46,13 +52,31 @@ jobs:
             echo "No PDF found in data/ — nothing to convert."
             exit 0
           fi
+
+          # Semester: the workflow_dispatch input wins; otherwise read it from the PDF filename
+          # (e.g. timetable-2025-S2.pdf). Blank → keep the current data/semester.txt.
+          SEM="$SEMESTER_INPUT"
+          if [ -z "$SEM" ]; then
+            SEM="$(printf '%s' "$PDF" | grep -oiE '20[0-9]{2}-?S[0-9]' | head -1 || true)"
+          fi
+          if [ -n "$SEM" ]; then
+            SEM="$(printf '%s' "$SEM" | tr 'a-z' 'A-Z' | sed -E 's/^(20[0-9]{2})-?(S[0-9])$/\1-\2/')"
+            echo "$SEM" > data/semester.txt
+            echo "Semester set to $SEM"
+          else
+            echo "No semester provided — keeping data/semester.txt ($(tr -d '[:space:]' < data/semester.txt 2>/dev/null))."
+          fi
+
           echo "Converting $PDF → data/timetable.csv"
           node scripts/pdf-to-csv.mjs "$PDF" data/timetable.csv
           node scripts/validate-data.mjs           # fail the run (before committing) if invalid
+
           git rm --quiet "$PDF"                     # remove the source PDF; the CSV is the artifact
-          git add data/timetable.csv
+          git add data/timetable.csv data/semester.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: convert ${PDF##*/} → data/timetable.csv"
+          MSG="chore: convert ${PDF##*/} → data/timetable.csv"
+          if [ -n "$SEM" ]; then MSG="$MSG (semester $SEM)"; fi
+          git commit -m "$MSG"
           git push origin "HEAD:${GITHUB_REF_NAME}"
-          echo "Committed the generated CSV to ${GITHUB_REF_NAME}."
+          echo "Committed to ${GITHUB_REF_NAME}."

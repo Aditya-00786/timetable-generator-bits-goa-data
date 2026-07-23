@@ -37,6 +37,11 @@ are two ways to turn it into `data/timetable.csv`:
 5. Open a **pull request** from that branch to `main` — then jump to step 4 of
    [How to submit a change](#how-to-submit-a-change).
 
+> **Starting a new semester?** Name the PDF with the semester — e.g. `timetable-2025-S2.pdf` —
+> and the action also updates `data/semester.txt`. Without a semester in the filename, the
+> current one is kept. (You can also run **Convert timetable PDF** from the **Actions** tab and
+> type the semester there — leave it blank to keep the current one, just like the sync workflow.)
+
 ### Option B — convert locally
 
 Clone the repo, install dependencies, and run the converter:
