@@ -27,17 +27,17 @@ via **workflow_dispatch**, optionally passing the semester as an input (blank fa
 
 ## 📄 Generating `timetable.csv` from the PDF
 
-The official timetable comes as a PDF. Rather than converting it by hand, run the built-in
-converter, which skips the instruction/legend pages, removes repeated page headers, keeps only
-the schema columns (renamed to match), and rejoins wrapped cells:
+The official timetable comes as a PDF. You don't have to convert it by hand:
 
-```bash
-npm install                              # first time only
-npm run pdf -- path/to/timetable.pdf     # writes data/timetable.csv
-```
+- **No clone needed:** upload the PDF into this `data/` folder on GitHub (**Add file → Upload
+  files** → commit to a new branch). The **Convert timetable PDF** action turns it into
+  `data/timetable.csv` on that branch automatically.
+- **Locally:** `npm install`, then `npm run pdf -- path/to/timetable.pdf`.
 
-It's best-effort — always review the output against the PDF before committing. See
-[`../CONTRIBUTING.md`](../CONTRIBUTING.md) for the full workflow.
+The converter skips the instruction/legend pages, removes the repeated page headers, keeps only
+the schema columns (renamed to match), and rejoins wrapped cells. It's best-effort — always
+review the output against the PDF. See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) for the full
+workflow.
 
 ## 📝 Instructions for Committing
 

@@ -54,6 +54,10 @@ Spotted an error, or have updated data for a new semester? Contributions are wel
 6. A maintainer reviews and merges. On merge to `main`, the data **syncs to the live app
    automatically**.
 
+> **Updating the whole timetable for a new semester?** You don't even need to clone — just
+> **upload the official PDF** into `data/` on a new branch, and the **Convert timetable PDF**
+> action turns it into `timetable.csv` for you.
+
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide.
 
 ---

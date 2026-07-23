@@ -21,23 +21,37 @@ cd timetable-generator-bits-goa-data
 npm install
 ```
 
-## Generating `timetable.csv` from the official PDF
+## Updating the whole timetable (new semester)
 
-Each semester the timetable is released as a PDF. Instead of exporting to Excel and cleaning it
-up by hand, use the converter:
+Each semester the timetable is released as a PDF. You don't have to convert it by hand — there
+are two ways to turn it into `data/timetable.csv`:
+
+### Option A — upload the PDF on GitHub (no clone needed) ✨
+
+1. On GitHub, click **Add file → Upload files**.
+2. Drag the timetable PDF into the **`data/`** folder.
+3. Choose **"Commit to a new branch"** (e.g. `update-timetable`) and commit.
+4. Wait ~1 min for the **Convert timetable PDF** action to finish. It converts the PDF to
+   `data/timetable.csv`, validates it, and commits the result back to your branch (removing the
+   uploaded PDF).
+5. Open a **pull request** from that branch to `main` — then jump to step 4 of
+   [How to submit a change](#how-to-submit-a-change).
+
+### Option B — convert locally
+
+After [getting set up](#getting-set-up):
 
 ```bash
 npm run pdf -- path/to/timetable.pdf     # writes data/timetable.csv
 ```
 
-It automatically skips the title/instruction/legend pages, drops the header row repeated on
-every page, keeps only the schema columns (renaming them to match), and stitches wrapped cells
+Either way, the converter skips the title/instruction/legend pages, drops the header row repeated
+on every page, keeps only the schema columns (renaming them to match), and stitches wrapped cells
 (long titles, instructor lists, dates spanning two lines) back together.
 
-It's a **best-effort** parser for the digital-text PDF, so **always eyeball the result** before
-committing — check a few rows against the PDF, especially wrapped day/time cells. Then follow the
-steps below to validate and open a PR. (After generating, you'll usually just bump
-`data/semester.txt` too.)
+It's a **best-effort** parser for the digital-text PDF, so **always review the result** before
+merging — check a few rows against the PDF, especially wrapped day/time cells. For a new semester,
+remember to bump `data/semester.txt` too.
 
 ## How to submit a change
 

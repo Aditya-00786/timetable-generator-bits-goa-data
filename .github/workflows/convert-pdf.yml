@@ -1,0 +1,58 @@
+name: Convert timetable PDF
+
+# Lets you update the whole timetable without cloning: upload the official PDF into data/ on a
+# branch (GitHub → Add file → Upload files → "Commit to a new branch"), and this converts it to
+# data/timetable.csv and commits the result back to that branch. Then open a PR → main and the
+# normal Validate data → review → sync flow takes over.
+#
+# It runs on any branch EXCEPT main (main is branch-protected, so automation can't push there —
+# the conversion always lands on a branch that you merge via PR). The bot's commit uses
+# GITHUB_TOKEN, so it does not re-trigger this workflow (no loop).
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - 'data/**.pdf'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install # full install — the converter needs the pdfjs-dist dev dependency
+
+      - name: Convert PDF → data/timetable.csv (validate, then commit back)
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "Refusing to modify the protected main branch — run this on a separate branch."
+            exit 1
+          fi
+          PDF="$(ls data/*.pdf 2>/dev/null | head -1 || true)"
+          if [ -z "$PDF" ]; then
+            echo "No PDF found in data/ — nothing to convert."
+            exit 0
+          fi
+          echo "Converting $PDF → data/timetable.csv"
+          node scripts/pdf-to-csv.mjs "$PDF" data/timetable.csv
+          node scripts/validate-data.mjs           # fail the run (before committing) if invalid
+          git rm --quiet "$PDF"                     # remove the source PDF; the CSV is the artifact
+          git add data/timetable.csv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: convert ${PDF##*/} → data/timetable.csv"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "Committed the generated CSV to ${GITHUB_REF_NAME}."
