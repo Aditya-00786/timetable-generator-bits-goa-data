@@ -257,8 +257,6 @@ async function run() {
     for (const c of cols) if (xByField.has(c.field)) c.x = xByField.get(c.field);
   }
 
-  if (process.env.DBG) console.error(`cols=${cols.map((c) => Math.round(c.x) + ':' + c.field).join('  ')}`);
-
   const fieldIdx = {};
   cols.forEach((c, i) => { if (c.field) fieldIdx[c.field] = i; });
   const cnIdx = fieldIdx['COURSE NO'];
@@ -270,7 +268,8 @@ async function run() {
   // Pass 2: parse records on every page with the global layout.
   const rows = [];
   for (const { lines, start } of pages) {
-    let cur = null;
+    const recs = [];  // course rows (anchored by a COURSE NO): { y, lines: [{y, assigned}] }
+    const conts = []; // wrapped/continuation lines: { y, assigned }
     for (let i = start; i < lines.length; i++) {
       const line = lines[i];
       if (isHeaderLine(line.tokens.map((t) => t.str).join(' '))) continue;
@@ -279,16 +278,42 @@ async function run() {
       for (const t of line.tokens) assigned[columnOf(t.x, cols)].push(t);
 
       const cn = assigned[cnIdx].map((t) => t.str).join(' ').trim();
-      const isStart = /^[A-Z]{2,6}\s?[A-Z]?[0-9]{3}/i.test(cn);
-
-      if (isStart) {
-        if (cur) { const o = finalize(cur, fieldIdx); if (o['COURSE NO']) rows.push(o); }
-        cur = assigned.map((a) => [...a]);
-      } else if (cur) {
-        for (let k = 0; k < cols.length; k++) cur[k].push(...assigned[k]);
-      }
+      if (/^[A-Z]{2,6}\s?[A-Z]?[0-9]{3}/i.test(cn)) recs.push({ y: line.y, lines: [{ y: line.y, assigned }] });
+      else conts.push({ y: line.y, assigned });
     }
-    if (cur) { const o = finalize(cur, fieldIdx); if (o['COURSE NO']) rows.push(o); }
+
+    // Attach each wrapped line to a course row. Most cells (instructor lists, dates) wrap
+    // DOWNWARD, so they belong to the row just ABOVE (reading order) — attaching them there keeps
+    // long instructor lists from bleeding across the tight rows of a dense multi-section block.
+    // Only the TITLE can be centred on the comcode row (its first line sits above its own row),
+    // so a title-only line goes to the vertically nearest row (with a small bias to "above" so a
+    // normal downward title wrap still stays put).
+    const titleIdx = fieldIdx['COURSE TITLE'];
+    const BIAS = 4;
+    for (const c of conts) {
+      let above = null, below = null;
+      for (const r of recs) {
+        if (r.y >= c.y) { if (!above || r.y < above.y) above = r; }
+        else if (!below || r.y > below.y) below = r;
+      }
+      const used = new Set();
+      c.assigned.forEach((toks, k) => { if (toks.length) used.add(k); });
+      const titleOnly = used.size > 0 && [...used].every((k) => k === titleIdx);
+
+      let target = above || below;
+      if (titleOnly && above && below && Math.abs(c.y - below.y) < Math.abs(c.y - above.y) - BIAS) {
+        target = below;
+      }
+      if (target) target.lines.push(c);
+    }
+
+    for (const r of recs) {
+      r.lines.sort((a, b) => b.y - a.y); // top → bottom, so wrapped cells read in order
+      const perCol = cols.map(() => []);
+      for (const ln of r.lines) for (let k = 0; k < cols.length; k++) perCol[k].push(...ln.assigned[k]);
+      const obj = finalize(perCol, fieldIdx);
+      if (obj['COURSE NO']) rows.push(obj);
+    }
   }
 
   const csv = Papa.unparse({ fields: OUTPUT_COLUMNS, data: rows }, { newline: '\n' });
