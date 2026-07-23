@@ -1,4 +1,4 @@
-# 📅 BITS Goa Timetable Generator — Data & Contributions
+# <img src="https://timetable-generator-bits-goa.vercel.app/apple-touch-icon.png" alt="" height="30" align="top"> BITS Goa Timetable Generator — Data & Contributions
 
 > The public **timetable data** and **contribution hub** for the BITS Goa Timetable Generator.
 
