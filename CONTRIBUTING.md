@@ -13,10 +13,10 @@ code changes aren't handled here.)
 
 ## Getting set up
 
-Fork this repo, then clone your fork and install dependencies:
+Clone the repo and install dependencies (fork first if you don't have write access):
 
 ```bash
-git clone https://github.com/<your-username>/timetable-generator-bits-goa-data.git
+git clone https://github.com/Aditya-00786/timetable-generator-bits-goa-data.git
 cd timetable-generator-bits-goa-data
 npm install
 ```

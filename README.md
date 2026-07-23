@@ -35,9 +35,9 @@ app. The application's front-end source code is maintained separately.
 Spotted an error, or have updated data for a new semester? Contributions are welcome!
 
 1. **Fork** this repo.
-2. **Clone your fork** and enter the folder:
+2. **Clone the repo** and enter the folder:
    ```bash
-   git clone https://github.com/<your-username>/timetable-generator-bits-goa-data.git
+   git clone https://github.com/Aditya-00786/timetable-generator-bits-goa-data.git
    cd timetable-generator-bits-goa-data
    ```
 3. **Edit the CSVs** in [`data/`](./data/) following the schema in [`data/README.md`](./data/README.md):
