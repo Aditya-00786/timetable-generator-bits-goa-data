@@ -158,25 +158,25 @@ function columnOf(x, cols) {
   return cols.length - 1;
 }
 
-// Re-derive L P U / SEC / STAT from their combined tokens by CONTENT, so column order (STAT/SEC
-// swap between layouts) and tight-spacing misfiling don't matter.
-function reparseCluster(tokens) {
-  let stat = '', lpu = '', sec = '';
-  const nums = [];
+// Re-derive L P U / SEC / STAT from their combined tokens: the lone letter is STAT (so a STAT/SEC
+// column-order swap between layouts doesn't matter), and each numeric token goes to whichever of
+// the L P U / SEC columns it sits nearer to (so a lone section number isn't mistaken for credits,
+// and a digit that drifted into a neighbouring column is still filed correctly).
+function reparseCluster(tokens, lpuX, secX) {
+  let stat = '';
+  const lpu = [], sec = [];
   for (const t of tokens) {
     const s = t.str.trim();
     if (!s) continue;
-    if (/^[A-Za-z]$/.test(s)) stat = stat || s;                 // single letter → STAT
-    else nums.push({ x: t.x, s });
+    if (/^[A-Za-z]$/.test(s)) { if (!stat) stat = s; continue; }
+    if (lpuX != null && secX != null) {
+      (Math.abs(t.x - lpuX) <= Math.abs(t.x - secX) ? lpu : sec).push(t);
+    } else {
+      (/\d\s\d/.test(s) || s.includes('*') ? lpu : sec).push(t); // no anchors: credits-like → L P U
+    }
   }
-  nums.sort((a, b) => a.x - b.x);
-  // L P U looks like credits (a number group like "3 0 3", or a starred value); else leftmost number.
-  let lpuTok = nums.find((t) => /\d\s\d/.test(t.s) || t.s.includes('*')) || nums[0];
-  if (lpuTok) {
-    lpu = lpuTok.s;
-    sec = nums.filter((t) => t !== lpuTok).map((t) => t.s).join(' ').trim();
-  }
-  return { lpu, sec, stat };
+  const join = (a) => a.sort((x, y) => x.x - y.x).map((t) => t.str.trim()).join(' ');
+  return { lpu: join(lpu), sec: join(sec), stat };
 }
 
 // From line `i`, walk in one vertical direction (step -1 = up, +1 = down) and return the index of
@@ -196,7 +196,7 @@ function reachAnchor(items, i, step, threshold) {
   }
 }
 
-function finalize(cur, fieldIdx) {
+function finalize(cur, fieldIdx, cols) {
   const out = {};
   for (const f of OUTPUT_COLUMNS) {
     const i = fieldIdx[f];
@@ -208,7 +208,8 @@ function finalize(cur, fieldIdx) {
     if (i != null) clusterTokens.push(...cur[i]);
   }
   if (clusterTokens.length) {
-    const r = reparseCluster(clusterTokens);
+    const lpuI = fieldIdx['L P U'], secI = fieldIdx['SEC'];
+    const r = reparseCluster(clusterTokens, lpuI != null ? cols[lpuI].x : null, secI != null ? cols[secI].x : null);
     out['L P U'] = r.lpu;
     out['SEC'] = r.sec;
     out['STAT'] = r.stat;
@@ -338,7 +339,7 @@ async function run() {
       rec.lines.sort((a, b) => b.y - a.y); // top → bottom, so wrapped cells read in order
       const perCol = cols.map(() => []);
       for (const ln of rec.lines) for (let k = 0; k < cols.length; k++) perCol[k].push(...ln.assigned[k]);
-      const obj = finalize(perCol, fieldIdx);
+      const obj = finalize(perCol, fieldIdx, cols);
       if (obj['COURSE NO']) rows.push(obj);
     }
   }
