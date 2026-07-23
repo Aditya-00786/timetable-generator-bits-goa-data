@@ -16,7 +16,10 @@ on:
       - 'data/semester.txt'
 
 jobs:
+  # Job id + name are both "validate" so the status-check context stays exactly "validate",
+  # which the repo's branch protection requires. Don't rename without updating that setting.
   validate:
+    name: validate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
