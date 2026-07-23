@@ -7,10 +7,14 @@
   "license": "MIT",
   "scripts": {
     "validate": "node scripts/validate-data.mjs",
-    "sync": "node scripts/sync-database.js"
+    "sync": "node scripts/sync-database.js",
+    "pdf": "node scripts/pdf-to-csv.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.3",
     "papaparse": "^5.5.4"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "^4.10.38"
   }
 }

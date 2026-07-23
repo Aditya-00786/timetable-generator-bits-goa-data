@@ -31,7 +31,7 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --omit=dev # only papaparse is needed; skip the pdf-tool dev dep
 
       - name: Validate CSV data
         run: node scripts/validate-data.mjs

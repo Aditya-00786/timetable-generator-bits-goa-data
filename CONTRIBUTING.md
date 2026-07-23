@@ -11,10 +11,30 @@ code changes aren't handled here.)
 - Exam-date overrides in `data/midsem.csv` / `data/compre.csv` (both optional).
 - The semester label in `data/semester.txt` when a new semester begins.
 
+## Generating `timetable.csv` from the official PDF
+
+Each semester the timetable is released as a PDF. Instead of exporting to Excel and cleaning it
+up by hand, use the converter:
+
+```bash
+npm install                                  # first time only
+npm run pdf -- path/to/timetable.pdf         # writes data/timetable.csv
+```
+
+It automatically skips the title/instruction/legend pages, drops the header row repeated on
+every page, keeps only the schema columns (renaming them to match), and stitches wrapped cells
+(long titles, instructor lists, dates spanning two lines) back together.
+
+It's a **best-effort** parser for the digital-text PDF, so **always eyeball the result** before
+committing — check a few rows against the PDF, especially wrapped day/time cells. Then follow the
+steps below to validate and open a PR. (After generating, you'll usually just bump
+`data/semester.txt` too.)
+
 ## How to submit a change
 
 1. **Fork** this repository and create a branch.
-2. **Edit the CSV(s)** in [`data/`](./data/). The headers must match the schema **exactly**
+2. **Edit the CSV(s)** in [`data/`](./data/) — or generate `timetable.csv` with the converter
+   above. The headers must match the schema **exactly**
    (case- and space-sensitive) — see [`data/README.md`](./data/README.md) for every column.
    - Do **not** add an `id` column; the database generates it.
    - `data/timetable.csv` is required and must not be empty.

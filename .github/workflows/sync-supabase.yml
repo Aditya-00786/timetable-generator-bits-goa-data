@@ -27,7 +27,7 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --omit=dev # runtime deps only; skip the pdf-tool dev dep
 
       - name: Resolve semester
         id: sem

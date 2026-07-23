@@ -25,6 +25,20 @@ Change `semester.txt` when rolling over to a new semester. You can also trigger 
 via **workflow_dispatch**, optionally passing the semester as an input (blank falls back to
 `semester.txt`).
 
+## 📄 Generating `timetable.csv` from the PDF
+
+The official timetable comes as a PDF. Rather than converting it by hand, run the built-in
+converter, which skips the instruction/legend pages, removes repeated page headers, keeps only
+the schema columns (renamed to match), and rejoins wrapped cells:
+
+```bash
+npm install                              # first time only
+npm run pdf -- path/to/timetable.pdf     # writes data/timetable.csv
+```
+
+It's best-effort — always review the output against the PDF before committing. See
+[`../CONTRIBUTING.md`](../CONTRIBUTING.md) for the full workflow.
+
 ## 📝 Instructions for Committing
 
 1. **Format:** Ensure your files are named exactly `timetable.csv`, `midsem.csv`, or `compre.csv`.
