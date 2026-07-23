@@ -299,9 +299,22 @@ async function run() {
     console.error('Could not locate the COURSE NO column in the header.');
     process.exit(1);
   }
+  const titleIdx = fieldIdx['COURSE TITLE'];
+
+  // Detect how titles wrap, once, globally — it flips how an ambiguous title-only line is resolved
+  // (see the title-only branch below). In a DOWNWARD-wrapping layout the title starts on the comcode
+  // row and spills to the lines below, so almost every record row carries its own title. A CENTRED
+  // layout floats a multi-line title above AND below the comcode row, leaving many record rows with
+  // no title of their own. The fraction of record rows that carry a title separates the two cleanly.
+  let titledRows = 0;
+  for (const pl of allPrimary) {
+    const asg = cols.map(() => []);
+    for (const t of pl.tokens) asg[columnOf(t.x, cols)].push(t);
+    if (titleIdx != null && asg[titleIdx].length) titledRows++;
+  }
+  const downwardWrap = allPrimary.length > 0 && titledRows / allPrimary.length >= 0.9;
 
   // Pass 2: parse records on every page with the global layout.
-  const titleIdx = fieldIdx['COURSE TITLE'];
   const rows = [];
   for (const { lines, start } of pages) {
     // Turn the page's data lines into items (course rows + wrapped lines), top → bottom.
@@ -313,7 +326,10 @@ async function run() {
       for (const t of line.tokens) assigned[columnOf(t.x, cols)].push(t);
       const cn = assigned[cnIdx].map((t) => t.str).join(' ').trim();
       const isAnchor = /^[A-Z]{2,6}\s?[A-Z]?[0-9]{3}/i.test(cn);
-      items.push({ y: line.y, assigned, isAnchor });
+      const used = new Set();
+      assigned.forEach((toks, k) => { if (toks.length) used.add(k); });
+      const titleOnly = !isAnchor && used.size > 0 && [...used].every((k) => k === titleIdx);
+      items.push({ y: line.y, assigned, isAnchor, titleOnly });
     }
     if (!items.length) continue;
 
@@ -330,17 +346,36 @@ async function run() {
 
     items.forEach((it, idx) => {
       if (it.isAnchor) return;
-      const used = new Set();
-      it.assigned.forEach((toks, k) => { if (toks.length) used.add(k); });
-      const titleOnly = used.size > 0 && [...used].every((k) => k === titleIdx);
 
       let target = -1;
-      if (titleOnly) {
-        // A title can be centred on its row, so grow to the nearest course row REACHABLE through
-        // small gaps (contiguity) in either direction; a big gap blocks bleeding to the neighbour.
-        const up = reachAnchor(items, idx, -1, threshold);
-        const down = reachAnchor(items, idx, +1, threshold);
-        if (up >= 0 && down >= 0) target = Math.abs(it.y - items[up].y) <= Math.abs(it.y - items[down].y) ? up : down;
+      if (it.titleOnly) {
+        // A wrapped title line belongs to a course row REACHABLE through small gaps (contiguity); a
+        // big gap blocks bleeding to a neighbour. HOW to pick between the reachable course above and
+        // below depends on the layout (detected globally above):
+        //
+        //  • DOWNWARD-wrap: a title spills onto the lines BELOW its comcode row and can span several
+        //    lines, so a late continuation line drifts closer to the next course. Decide per whole
+        //    contiguous BLOCK of continuation lines (any non-anchor lines — title-only or a mixed
+        //    line also carrying a wrapped date/instructor, which anchors the block to its record)
+        //    and attach by the block's nearest EDGE, so the whole title stays with one course.
+        //  • CENTRED: a multi-line title floats above AND below its comcode row, so consecutive
+        //    title-only lines belong to DIFFERENT courses; decide per line by nearest anchor.
+        let up, down, distUp, distDown;
+        if (downwardWrap) {
+          let top = idx, bottom = idx;
+          while (top - 1 >= 0 && !items[top - 1].isAnchor && Math.abs(items[top].y - items[top - 1].y) <= threshold) top--;
+          while (bottom + 1 < items.length && !items[bottom + 1].isAnchor && Math.abs(items[bottom].y - items[bottom + 1].y) <= threshold) bottom++;
+          up = reachAnchor(items, top, -1, threshold);
+          down = reachAnchor(items, bottom, +1, threshold);
+          distUp = up >= 0 ? Math.abs(items[top].y - items[up].y) : Infinity;
+          distDown = down >= 0 ? Math.abs(items[bottom].y - items[down].y) : Infinity;
+        } else {
+          up = reachAnchor(items, idx, -1, threshold);
+          down = reachAnchor(items, idx, +1, threshold);
+          distUp = up >= 0 ? Math.abs(it.y - items[up].y) : Infinity;
+          distDown = down >= 0 ? Math.abs(it.y - items[down].y) : Infinity;
+        }
+        if (up >= 0 && down >= 0) target = distUp <= distDown ? up : down;
         else if (up >= 0) target = up;
         else if (down >= 0) target = down;
         else { let bd = Infinity; items.forEach((a, ai) => { if (a.isAnchor) { const d = Math.abs(it.y - a.y); if (d < bd) { bd = d; target = ai; } } }); }
