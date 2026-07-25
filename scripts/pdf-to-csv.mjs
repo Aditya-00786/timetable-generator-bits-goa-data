@@ -159,21 +159,29 @@ function columnOf(x, cols) {
 }
 
 // Re-derive L P U / SEC / STAT from their combined tokens: the lone letter is STAT (so a STAT/SEC
-// column-order swap between layouts doesn't matter), and each numeric token goes to whichever of
-// the L P U / SEC columns it sits nearer to (so a lone section number isn't mistaken for credits,
-// and a digit that drifted into a neighbouring column is still filed correctly).
+// column-order swap between layouts doesn't matter). SEC is always a SINGLE section number, so when
+// several numbers are present we take the ONE nearest the SEC column as SEC and give the rest to
+// L P U — this beats a per-token nearest-column vote, which misfiles a single-number L P U value
+// (e.g. a thesis "16") that sits between the two columns and drifts to SEC, yielding "16 1". With
+// only one number (or no column anchors) we fall back to nearest-column / a credits-like heuristic.
 function reparseCluster(tokens, lpuX, secX) {
   let stat = '';
-  const lpu = [], sec = [];
+  const nums = [];
   for (const t of tokens) {
     const s = t.str.trim();
     if (!s) continue;
     if (/^[A-Za-z]$/.test(s)) { if (!stat) stat = s; continue; }
-    if (lpuX != null && secX != null) {
-      (Math.abs(t.x - lpuX) <= Math.abs(t.x - secX) ? lpu : sec).push(t);
-    } else {
-      (/\d\s\d/.test(s) || s.includes('*') ? lpu : sec).push(t); // no anchors: credits-like → L P U
-    }
+    nums.push(t);
+  }
+  const lpu = [], sec = [];
+  if (secX != null && nums.length > 1) {
+    let si = 0;
+    for (let i = 1; i < nums.length; i++) if (Math.abs(nums[i].x - secX) < Math.abs(nums[si].x - secX)) si = i;
+    nums.forEach((t, i) => (i === si ? sec : lpu).push(t));
+  } else if (lpuX != null && secX != null) {
+    for (const t of nums) (Math.abs(t.x - lpuX) <= Math.abs(t.x - secX) ? lpu : sec).push(t);
+  } else {
+    for (const t of nums) ((/\d\s\d/.test(t.str) || t.str.includes('*')) ? lpu : sec).push(t); // no anchors: credits-like → L P U
   }
   const join = (a) => a.sort((x, y) => x.x - y.x).map((t) => t.str.trim()).join(' ');
   return { lpu: join(lpu), sec: join(sec), stat };
