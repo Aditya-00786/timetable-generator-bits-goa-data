@@ -257,14 +257,18 @@ async function run() {
     const headerIdx = lines.findIndex((l) => isHeaderLine(l.tokens.map((t) => t.str).join(' ')));
     if (headerIdx === -1) continue; // instruction / legend / title page
 
-    // Merge the header line with any following label-only lines (a wrapped second header row)
-    // until the first data row (which carries a COM CODE number).
+    // Merge the header line with any following label-only lines (a wrapped second header row).
+    // Stop at the first data row (a COM CODE number) OR the first line that is no longer header
+    // labels — i.e. carries no recognised header token. The latter matters for the centred layout,
+    // where the first course's title floats ABOVE its comcode row (between the header and that row);
+    // without this guard the merge would swallow that title line into the header and lose it.
     const ht = [...lines[headerIdx].tokens];
     let start = headerIdx + 1;
     while (
       start < lines.length &&
       !hasComcode(lines[start]) &&
-      !isHeaderLine(lines[start].tokens.map((t) => t.str).join(' '))
+      !isHeaderLine(lines[start].tokens.map((t) => t.str).join(' ')) &&
+      lines[start].tokens.some((t) => fieldFor(t.str) !== undefined)
     ) {
       ht.push(...lines[start].tokens);
       start++;
@@ -352,47 +356,65 @@ async function run() {
     const order = [];
     items.forEach((it, idx) => { if (it.isAnchor) { const rec = { lines: [it] }; recByIdx.set(idx, rec); order.push(rec); } });
 
+    // The course row just above (dates / instructor lists wrap downward); fall back to below.
+    const anchorAbove = (idx) => {
+      for (let k = idx - 1; k >= 0; k--) if (items[k].isAnchor) return k;
+      for (let k = idx + 1; k < items.length; k++) if (items[k].isAnchor) return k;
+      return -1;
+    };
+    // Which course a wrapped TITLE fragment at items[idx] belongs to. It grows to a course row
+    // REACHABLE through small gaps (contiguity); a big gap blocks bleeding to a neighbour. HOW to
+    // pick between the reachable course above and below depends on the layout (detected globally):
+    //  • DOWNWARD-wrap: a title spills onto the lines BELOW its comcode row and can span several
+    //    lines, so a late continuation line drifts closer to the next course. Decide per whole
+    //    contiguous BLOCK of continuation lines (any non-anchor lines) by the block's nearest EDGE,
+    //    so the whole title stays with one course.
+    //  • CENTRED: a multi-line title floats above AND below its comcode row, so consecutive title
+    //    lines belong to DIFFERENT courses; decide per line by nearest anchor.
+    const titleTargetFor = (idx) => {
+      const it = items[idx];
+      let up, down, distUp, distDown;
+      if (downwardWrap) {
+        let top = idx, bottom = idx;
+        while (top - 1 >= 0 && !items[top - 1].isAnchor && Math.abs(items[top].y - items[top - 1].y) <= threshold) top--;
+        while (bottom + 1 < items.length && !items[bottom + 1].isAnchor && Math.abs(items[bottom].y - items[bottom + 1].y) <= threshold) bottom++;
+        up = reachAnchor(items, top, -1, threshold);
+        down = reachAnchor(items, bottom, +1, threshold);
+        distUp = up >= 0 ? Math.abs(items[top].y - items[up].y) : Infinity;
+        distDown = down >= 0 ? Math.abs(items[bottom].y - items[down].y) : Infinity;
+      } else {
+        up = reachAnchor(items, idx, -1, threshold);
+        down = reachAnchor(items, idx, +1, threshold);
+        distUp = up >= 0 ? Math.abs(it.y - items[up].y) : Infinity;
+        distDown = down >= 0 ? Math.abs(it.y - items[down].y) : Infinity;
+      }
+      if (up >= 0 && down >= 0) return distUp <= distDown ? up : down;
+      if (up >= 0) return up;
+      if (down >= 0) return down;
+      let bd = Infinity, t = -1;
+      items.forEach((a, ai) => { if (a.isAnchor) { const d = Math.abs(it.y - a.y); if (d < bd) { bd = d; t = ai; } } });
+      return t;
+    };
+    const pushTo = (target, y, assigned) => { if (target >= 0 && recByIdx.has(target)) recByIdx.get(target).lines.push({ y, assigned }); };
+
     items.forEach((it, idx) => {
       if (it.isAnchor) return;
+      if (it.titleOnly) { pushTo(titleTargetFor(idx), it.y, it.assigned); return; }
 
-      let target = -1;
-      if (it.titleOnly) {
-        // A wrapped title line belongs to a course row REACHABLE through small gaps (contiguity); a
-        // big gap blocks bleeding to a neighbour. HOW to pick between the reachable course above and
-        // below depends on the layout (detected globally above):
-        //
-        //  • DOWNWARD-wrap: a title spills onto the lines BELOW its comcode row and can span several
-        //    lines, so a late continuation line drifts closer to the next course. Decide per whole
-        //    contiguous BLOCK of continuation lines (any non-anchor lines — title-only or a mixed
-        //    line also carrying a wrapped date/instructor, which anchors the block to its record)
-        //    and attach by the block's nearest EDGE, so the whole title stays with one course.
-        //  • CENTRED: a multi-line title floats above AND below its comcode row, so consecutive
-        //    title-only lines belong to DIFFERENT courses; decide per line by nearest anchor.
-        let up, down, distUp, distDown;
-        if (downwardWrap) {
-          let top = idx, bottom = idx;
-          while (top - 1 >= 0 && !items[top - 1].isAnchor && Math.abs(items[top].y - items[top - 1].y) <= threshold) top--;
-          while (bottom + 1 < items.length && !items[bottom + 1].isAnchor && Math.abs(items[bottom].y - items[bottom + 1].y) <= threshold) bottom++;
-          up = reachAnchor(items, top, -1, threshold);
-          down = reachAnchor(items, bottom, +1, threshold);
-          distUp = up >= 0 ? Math.abs(items[top].y - items[up].y) : Infinity;
-          distDown = down >= 0 ? Math.abs(items[bottom].y - items[down].y) : Infinity;
-        } else {
-          up = reachAnchor(items, idx, -1, threshold);
-          down = reachAnchor(items, idx, +1, threshold);
-          distUp = up >= 0 ? Math.abs(it.y - items[up].y) : Infinity;
-          distDown = down >= 0 ? Math.abs(it.y - items[down].y) : Infinity;
-        }
-        if (up >= 0 && down >= 0) target = distUp <= distDown ? up : down;
-        else if (up >= 0) target = up;
-        else if (down >= 0) target = down;
-        else { let bd = Infinity; items.forEach((a, ai) => { if (a.isAnchor) { const d = Math.abs(it.y - a.y); if (d < bd) { bd = d; target = ai; } } }); }
+      const hasTitle = titleIdx != null && it.assigned[titleIdx].length > 0;
+      const hasRest = it.assigned.some((toks, k) => k !== titleIdx && toks.length > 0);
+      if (!downwardWrap && hasTitle && hasRest) {
+        // CENTRED layout: this line straddles a comcode row, so its TITLE fragment belongs to the
+        // course centred on it (nearest anchor) while its wrapped date/instructor tokens belong to
+        // the course ABOVE. Route the two groups to different records so a centred title isn't
+        // stolen by the neighbour whose date merely shares the line.
+        pushTo(titleTargetFor(idx), it.y, it.assigned.map((toks, k) => (k === titleIdx ? toks : [])));
+        pushTo(anchorAbove(idx), it.y, it.assigned.map((toks, k) => (k === titleIdx ? [] : toks)));
       } else {
-        // Instructor lists / dates wrap downward — attach to the course row just above.
-        for (let k = idx - 1; k >= 0; k--) if (items[k].isAnchor) { target = k; break; }
-        if (target < 0) for (let k = idx + 1; k < items.length; k++) if (items[k].isAnchor) { target = k; break; }
+        // Non-title wrap (dates / instructors), or a downward-wrap mixed line that belongs wholesale
+        // to the course above — attach the whole line there.
+        pushTo(anchorAbove(idx), it.y, it.assigned);
       }
-      if (target >= 0 && recByIdx.has(target)) recByIdx.get(target).lines.push(it);
     });
 
     for (const rec of order) {
