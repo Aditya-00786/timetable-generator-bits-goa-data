@@ -45,6 +45,16 @@ const canonOf = (h) => {
 
 // COURSE NO: dept + code, code may end in a letter and/or carry a "-N" suffix.
 //   BIO F101, CS F372, BITS C790T, BITS F101-1
+// Collapse an exact "X X" self-repeat (a title occasionally rendered/merged twice) → "X".
+const dedupTitle = (t) => {
+  const s = (t || '').replace(/\s+/g, ' ').trim();
+  if (s.length % 2 === 1) {
+    const h = (s.length - 1) / 2;
+    if (s[h] === ' ' && s.slice(0, h) === s.slice(h + 1)) return s.slice(0, h);
+  }
+  return t;
+};
+
 const COURSE_NO_RE = /^[A-Z]{2,5}\s?[A-Z]?\d{3}[A-Z]?(?:-\d+)?$/;
 const COMCODE_RE = /^\d{5,6}$/;
 // STAT is a short letter code: L/T/P (schedulable) plus R (thesis/independent study), I, etc.
@@ -117,13 +127,20 @@ const normalize = async (xlsxPath) => {
     if (!sec) { anomalies.push(`row ${r + 1}: empty SEC (${courseNo} ${stat})`); continue; }
 
     out.push([
-      courseNo, title, lpu, stat, sec,
+      courseNo, dedupTitle(title), lpu, stat, sec,
       at(row, 'INSTRUCTOR'), at(row, 'DAYS'), at(row, 'ROOM'),
       at(row, 'COMPRE'), at(row, 'MIDSEM_DATE'), at(row, 'MIDSEM_TIME'),
     ]);
   }
 
-  return { out, map, headerRow, anomalies, totalRows: rows.length };
+  // Backfill a blank title from another section of the same course (some layouts print the title
+  // only on the first section row). Column 0 = COURSE NO, column 1 = COURSE TITLE.
+  const titleByCourse = new Map();
+  for (const r of out) if (r[1] && !titleByCourse.has(r[0])) titleByCourse.set(r[0], r[1]);
+  let backfilled = 0;
+  for (const r of out) if (!r[1] && titleByCourse.has(r[0])) { r[1] = titleByCourse.get(r[0]); backfilled++; }
+
+  return { out, map, headerRow, anomalies, backfilled, totalRows: rows.length };
 };
 
 const main = async () => {
