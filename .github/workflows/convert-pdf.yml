@@ -1,20 +1,15 @@
-name: Convert timetable PDF
+name: Convert timetable PDF (pdfjs backup)
 
-# Lets you update the whole timetable without cloning: upload the official PDF into data/ on a
-# branch (GitHub → Add file → Upload files → "Commit to a new branch"), and this converts it to
-# data/timetable.csv and commits the result back to that branch. Then open a PR → main and the
-# normal Validate data → review → sync flow takes over.
+# MANUAL BACKUP converter. The Adobe-based "Convert timetable PDF (Adobe)" workflow is now the
+# default and runs automatically when a PDF is uploaded to data/ on a branch. This pdfjs converter
+# no longer runs on upload — run it by hand from the Actions tab (Run workflow) only if you need it
+# (e.g. Adobe is unavailable). It still converts the PDF in data/ to data/timetable.csv and commits
+# the result back to the branch; open a PR → main afterwards.
 #
-# It runs on any branch EXCEPT main (main is branch-protected, so automation can't push there —
-# the conversion always lands on a branch that you merge via PR). The bot's commit uses
-# GITHUB_TOKEN, so it does not re-trigger this workflow (no loop).
+# Runs only via manual dispatch, on any branch EXCEPT main (main is branch-protected). The bot's
+# commit uses GITHUB_TOKEN, so it does not trigger other workflows.
 
 on:
-  push:
-    branches-ignore:
-      - main
-    paths:
-      - 'data/**.pdf'
   workflow_dispatch:
     inputs:
       semester:
