@@ -73,8 +73,9 @@ const main = async () => {
   const tmpXlsx = path.join(REPO, 'artifacts', '_convert.xlsx');
   await exportPdfToXlsx({ pdfBytes, pages, outXlsx: tmpXlsx });
 
-  const { out, anomalies, map } = await normalize(tmpXlsx);
+  const { out, anomalies, map, daysSplit } = await normalize(tmpXlsx);
   console.log(`Column map: ${JSON.stringify(map)}`);
+  if (daysSplit) console.log(`Split ${daysSplit} merged DAYS/HR row(s) back to their components.`);
 
   const outCsv = path.resolve(outArg || path.join(REPO, 'data', 'timetable.csv'));
   fs.writeFileSync(outCsv, Papa.unparse({ fields: OUT_HEADERS, data: out }) + '\n');
