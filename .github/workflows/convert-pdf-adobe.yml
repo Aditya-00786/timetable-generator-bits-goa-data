@@ -1,0 +1,67 @@
+name: Convert timetable PDF (Adobe)
+
+# EXPERIMENTAL / isolated Adobe-based conversion, running alongside the existing pdfjs
+# `convert-pdf.yml` without interfering with it. Upload a PDF anywhere in the repo (e.g. under
+# test/), then run this workflow pointing `pdf_path` at it. It converts PDF → data-schema CSV via
+# Adobe PDF Services and uploads the result as a build artifact. It writes nothing back to the repo
+# and never touches data/**, so the production pipeline (convert-pdf → validate → sync) is untouched.
+#
+# Requires two repo Actions secrets: PDF_SERVICES_CLIENT_ID and PDF_SERVICES_CLIENT_SECRET
+# (Adobe OAuth Server-to-Server credentials).
+
+on:
+  workflow_dispatch:
+    inputs:
+      pdf_path:
+        description: 'Path to a PDF committed in the repo (e.g. test/timetable.pdf)'
+        required: true
+        default: 'test/timetable.pdf'
+      pages:
+        description: 'Optional page range override, e.g. 6-32. Leave blank to auto-detect.'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install # full install — the Adobe converter needs the dev deps (sdk, pdf-lib, exceljs)
+
+      - name: Convert PDF → CSV (Adobe)
+        env:
+          PDF_SERVICES_CLIENT_ID: ${{ secrets.PDF_SERVICES_CLIENT_ID }}
+          PDF_SERVICES_CLIENT_SECRET: ${{ secrets.PDF_SERVICES_CLIENT_SECRET }}
+          PAGES: ${{ github.event.inputs.pages }}
+        run: |
+          PDF="${{ github.event.inputs.pdf_path }}"
+          if [ ! -f "$PDF" ]; then
+            echo "No PDF at '$PDF'. Upload one to the repo (e.g. test/) and dispatch with its path."
+            exit 1
+          fi
+          if [ -z "${PDF_SERVICES_CLIENT_ID}" ] || [ -z "${PDF_SERVICES_CLIENT_SECRET}" ]; then
+            echo "Missing Adobe secrets. Add PDF_SERVICES_CLIENT_ID and PDF_SERVICES_CLIENT_SECRET to the repo's Actions secrets."
+            exit 1
+          fi
+          mkdir -p artifacts
+          node scripts/convert-adobe.mjs "$PDF" artifacts/timetable.csv
+
+      - name: Upload conversion artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adobe-conversion
+          path: |
+            artifacts/timetable.csv
+            artifacts/_convert.xlsx
+          if-no-files-found: warn

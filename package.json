@@ -8,13 +8,19 @@
   "scripts": {
     "validate": "node scripts/validate-data.mjs",
     "sync": "node scripts/sync-database.js",
-    "pdf": "node scripts/pdf-to-csv.mjs"
+    "pdf": "node scripts/pdf-to-csv.mjs",
+    "adobe": "node scripts/adobe-convert.mjs",
+    "normalize": "node scripts/xlsx-to-timetable-csv.mjs",
+    "convert": "node scripts/convert-adobe.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.3",
     "papaparse": "^5.5.4"
   },
   "devDependencies": {
+    "@adobe/pdfservices-node-sdk": "^4.1.0",
+    "exceljs": "^4.4.0",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38"
   }
 }
