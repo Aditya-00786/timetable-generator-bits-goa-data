@@ -13,7 +13,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import ExcelJS from 'exceljs';
 import Papa from 'papaparse';
-import { cellText } from './adobe-convert.mjs';
 
 // The exact output columns validate-data.mjs / the sync step expect.
 const OUT_HEADERS = [
@@ -61,6 +60,23 @@ const COMCODE_RE = /^\d{5,6}$/;
 // A 1-2 letter token — rejects LPU/title fragments (e.g. "3 0 3") that leak in on a bad extraction.
 const STAT_RE = /^[A-Z]{1,2}$/;
 
+// Flatten a cell to text but PRESERVE internal newlines — Adobe emits one line per component in a
+// vertically-merged DAYS/HR cell, and we need those breaks to split it back apart (see below).
+const cellRaw = (v) => {
+  if (v == null) return '';
+  if (typeof v === 'object') {
+    if (Array.isArray(v.richText)) return v.richText.map((r) => r.text).join('');
+    if (v.text != null) return String(v.text);
+    if (v.result != null) return String(v.result);
+    if (v.hyperlink != null) return String(v.text ?? v.hyperlink);
+    return '';
+  }
+  return String(v);
+};
+
+// Collapse to a single clean line (used for every field except while splitting DAYS/HR).
+const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+
 const readRows = async (xlsxPath) => {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(xlsxPath);
@@ -68,7 +84,7 @@ const readRows = async (xlsxPath) => {
   const rows = [];
   ws.eachRow({ includeEmpty: false }, (row) => {
     const cells = [];
-    row.eachCell({ includeEmpty: true }, (cell) => { cells[cell.col - 1] = cellText(cell.value); });
+    row.eachCell({ includeEmpty: true }, (cell) => { cells[cell.col - 1] = cellRaw(cell.value); });
     for (let i = 0; i < cells.length; i++) if (cells[i] == null) cells[i] = '';
     rows.push(cells);
   });
@@ -97,41 +113,69 @@ const normalize = async (xlsxPath) => {
   if (!found) throw new Error('Could not locate a header row (need COURSE NO + L P U + STAT + SEC columns).');
   const { map, headerRow } = found;
 
-  const at = (row, field) => (map[field] != null ? (row[map[field]] || '').trim() : '');
+  const at = (row, field) => (map[field] != null ? (row[map[field]] || '') : ''); // raw (may hold \n)
+  const cln = (row, field) => clean(at(row, field));
   // A data row has either a numeric computer code OR a course-number-shaped COURSE NO. Checking both
   // (not COMCODE alone) keeps rows where Adobe failed to read the code (e.g. "#N/A"), while still
   // excluding the banner and repeated-header rows (neither cell matches).
   const isDataRow = (row) =>
-    COMCODE_RE.test(at(row, 'COMCODE')) || COURSE_NO_RE.test(at(row, 'NO').toUpperCase().replace(/\s+/g, ' '));
+    COMCODE_RE.test(cln(row, 'COMCODE')) || COURSE_NO_RE.test(cln(row, 'NO').toUpperCase());
 
-  const out = [];
   const anomalies = [];
+  const recs = [];
   let lastNo = '', lastTitle = '', lastLpu = '';
 
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r];
     if (!isDataRow(row)) continue;
 
-    let courseNo = at(row, 'NO').toUpperCase().replace(/\s+/g, ' ');
-    let title = at(row, 'TITLE');
-    let lpu = at(row, 'LPU');
+    let courseNo = cln(row, 'NO').toUpperCase();
+    let title = cln(row, 'TITLE');
+    let lpu = cln(row, 'LPU');
     // Carry down course identity if a section row left it blank (defensive; not seen so far).
-    if (!courseNo && (at(row, 'STAT') || at(row, 'SEC'))) { courseNo = lastNo; title = title || lastTitle; lpu = lpu || lastLpu; }
+    if (!courseNo && (cln(row, 'STAT') || cln(row, 'SEC'))) { courseNo = lastNo; title = title || lastTitle; lpu = lpu || lastLpu; }
     if (courseNo) { lastNo = courseNo; lastTitle = title; lastLpu = lpu; }
 
-    const stat = at(row, 'STAT').toUpperCase();
-    const sec = at(row, 'SEC');
+    const stat = cln(row, 'STAT').toUpperCase();
+    const sec = cln(row, 'SEC');
 
     if (!COURSE_NO_RE.test(courseNo)) { anomalies.push(`row ${r + 1}: bad COURSE NO "${courseNo}"`); continue; }
     if (!STAT_RE.test(stat)) { anomalies.push(`row ${r + 1}: bad STAT "${stat}" (${courseNo})`); continue; }
     if (!sec) { anomalies.push(`row ${r + 1}: empty SEC (${courseNo} ${stat})`); continue; }
 
-    out.push([
-      courseNo, dedupTitle(title), lpu, stat, sec,
-      at(row, 'INSTRUCTOR'), at(row, 'DAYS'), at(row, 'ROOM'),
-      at(row, 'COMPRE'), at(row, 'MIDSEM_DATE'), at(row, 'MIDSEM_TIME'),
-    ]);
+    recs.push({
+      courseNo, title: dedupTitle(title), lpu, stat, sec,
+      instructor: cln(row, 'INSTRUCTOR'),
+      daysRaw: at(row, 'DAYS'), // keep newlines — needed for the merge split below
+      room: cln(row, 'ROOM'),
+      compre: cln(row, 'COMPRE'), midDate: cln(row, 'MIDSEM_DATE'), midTime: cln(row, 'MIDSEM_TIME'),
+    });
   }
+
+  // Un-merge Adobe's vertically-merged DAYS/HR. When a course's DAYS/HR wraps across lines (one line
+  // per component), Adobe sometimes stamps that whole multi-line cell onto every component row of the
+  // course — so each component wrongly claims all the slots and clashes with its siblings. Detect a
+  // run of consecutive rows of the SAME course sharing an identical multi-line cell; if its line
+  // count equals the run length, hand line k back to component-row k. Otherwise leave it collapsed.
+  let daysSplit = 0;
+  for (let i = 0; i < recs.length;) {
+    let j = i;
+    while (j + 1 < recs.length && recs[j + 1].courseNo === recs[i].courseNo && recs[j + 1].daysRaw === recs[i].daysRaw) j++;
+    const runLen = j - i + 1;
+    const lines = recs[i].daysRaw.split('\n').map(clean).filter(Boolean);
+    if (runLen > 1 && recs[i].daysRaw.includes('\n') && lines.length === runLen) {
+      for (let k = 0; k < runLen; k++) recs[i + k].days = lines[k];
+      daysSplit += runLen;
+    } else {
+      for (let k = 0; k < runLen; k++) recs[i + k].days = clean(recs[i + k].daysRaw);
+    }
+    i = j + 1;
+  }
+
+  const out = recs.map((rec) => [
+    rec.courseNo, rec.title, rec.lpu, rec.stat, rec.sec,
+    rec.instructor, rec.days, rec.room, rec.compre, rec.midDate, rec.midTime,
+  ]);
 
   // Backfill a blank title from another section of the same course (some layouts print the title
   // only on the first section row). Column 0 = COURSE NO, column 1 = COURSE TITLE.
@@ -140,7 +184,7 @@ const normalize = async (xlsxPath) => {
   let backfilled = 0;
   for (const r of out) if (!r[1] && titleByCourse.has(r[0])) { r[1] = titleByCourse.get(r[0]); backfilled++; }
 
-  return { out, map, headerRow, anomalies, backfilled, totalRows: rows.length };
+  return { out, map, headerRow, anomalies, backfilled, daysSplit, totalRows: rows.length };
 };
 
 const main = async () => {
@@ -148,7 +192,7 @@ const main = async () => {
   if (!input) { console.error('Usage: node scripts/xlsx-to-timetable-csv.mjs <in.xlsx> [out.csv]'); process.exit(1); }
   const outPath = path.resolve(outArg || 'data/timetable.csv');
 
-  const { out, map, headerRow, anomalies, totalRows } = await normalize(path.resolve(input));
+  const { out, map, headerRow, anomalies, daysSplit, totalRows } = await normalize(path.resolve(input));
 
   const csv = Papa.unparse({ fields: OUT_HEADERS, data: out }, { quotes: false });
   fs.writeFileSync(outPath, csv + '\n');
@@ -156,6 +200,7 @@ const main = async () => {
   console.log(`Input: ${path.resolve(input)}`);
   console.log(`Header row: ${headerRow + 1}  |  column map: ${JSON.stringify(map)}`);
   console.log(`Scanned ${totalRows} rows → ${out.length} data rows → ${outPath}`);
+  if (daysSplit) console.log(`Split ${daysSplit} merged DAYS/HR row(s) back to their components.`);
   if (anomalies.length) {
     console.log(`\n⚠ ${anomalies.length} row(s) skipped as anomalies:`);
     anomalies.slice(0, 20).forEach((a) => console.log(`   - ${a}`));
