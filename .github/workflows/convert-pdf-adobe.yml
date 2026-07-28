@@ -10,11 +10,19 @@ name: Convert timetable PDF (Adobe)
 # (Adobe OAuth Server-to-Server credentials).
 
 on:
+  # Push a PDF into test/ on this branch to convert it (workflow_dispatch needs the file on the
+  # default branch, which we're intentionally NOT doing yet — so a scoped push trigger drives tests).
+  push:
+    branches:
+      - adobe-convert
+    paths:
+      - 'test/**.pdf'
+      - '.github/workflows/convert-pdf-adobe.yml'
   workflow_dispatch:
     inputs:
       pdf_path:
         description: 'Path to a PDF committed in the repo (e.g. test/timetable.pdf)'
-        required: true
+        required: false
         default: 'test/timetable.pdf'
       pages:
         description: 'Optional page range override, e.g. 6-32. Leave blank to auto-detect.'
@@ -45,10 +53,12 @@ jobs:
           PAGES: ${{ github.event.inputs.pages }}
         run: |
           PDF="${{ github.event.inputs.pdf_path }}"
-          if [ ! -f "$PDF" ]; then
-            echo "No PDF at '$PDF'. Upload one to the repo (e.g. test/) and dispatch with its path."
+          if [ -z "$PDF" ]; then PDF="$(ls test/*.pdf 2>/dev/null | head -1)"; fi
+          if [ -z "$PDF" ] || [ ! -f "$PDF" ]; then
+            echo "No PDF found (looked at '$PDF' and test/*.pdf). Upload a PDF to test/ on this branch."
             exit 1
           fi
+          echo "Converting: $PDF"
           if [ -z "${PDF_SERVICES_CLIENT_ID}" ] || [ -z "${PDF_SERVICES_CLIENT_SECRET}" ]; then
             echo "Missing Adobe secrets. Add PDF_SERVICES_CLIENT_ID and PDF_SERVICES_CLIENT_SECRET to the repo's Actions secrets."
             exit 1
