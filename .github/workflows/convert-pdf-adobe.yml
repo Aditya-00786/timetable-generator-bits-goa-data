@@ -1,19 +1,29 @@
-name: Convert timetable PDF (pdfjs backup)
+name: Convert timetable PDF (Adobe)
 
-# MANUAL BACKUP converter. The Adobe-based "Convert timetable PDF (Adobe)" workflow is now the
-# default and runs automatically when a PDF is uploaded to data/ on a branch. This pdfjs converter
-# no longer runs on upload — run it by hand from the Actions tab (Run workflow) only if you need it
-# (e.g. Adobe is unavailable). It still converts the PDF in data/ to data/timetable.csv and commits
-# the result back to the branch; open a PR → main afterwards.
+# DEFAULT converter. Update the whole timetable without cloning: upload the official PDF into data/
+# on a branch (GitHub → Add file → Upload files → "Commit to a new branch"), and this converts it to
+# data/timetable.csv via Adobe PDF Services and commits the result back to that branch. Then open a
+# PR → main and the normal Validate data → review → sync flow takes over.
 #
-# Runs only via manual dispatch, on any branch EXCEPT main (main is branch-protected). The bot's
-# commit uses GITHUB_TOKEN, so it does not trigger other workflows.
+# Runs on any branch EXCEPT main (main is branch-protected, so automation lands on a branch you merge
+# via PR). The bot commit uses GITHUB_TOKEN, so it does not re-trigger this workflow (no loop).
+#
+# The old pdfjs converter (convert-pdf.yml) is kept as a MANUAL backup you can run from the Actions
+# tab if a conversion ever needs it.
+#
+# Requires repo Actions secrets: PDF_SERVICES_CLIENT_ID and PDF_SERVICES_CLIENT_SECRET
+# (Adobe OAuth Server-to-Server credentials).
 
 on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - 'data/**.pdf'
   workflow_dispatch:
     inputs:
       semester:
-        description: 'Semester (e.g. 2025-S2). Leave blank to keep the current data/semester.txt.'
+        description: 'Semester (e.g. 2025-S2). Leave blank to detect from the PDF / keep current.'
         required: false
 
 permissions:
@@ -33,15 +43,21 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install # full install — the converter needs the pdfjs-dist dev dependency
+        run: npm install # full install — the Adobe converter needs the dev deps (sdk, pdf-lib, exceljs)
 
       - name: Convert PDF → data/timetable.csv (validate, then commit back)
         env:
           SEMESTER_INPUT: ${{ github.event.inputs.semester }}
           GH_TOKEN: ${{ github.token }}
+          PDF_SERVICES_CLIENT_ID: ${{ secrets.PDF_SERVICES_CLIENT_ID }}
+          PDF_SERVICES_CLIENT_SECRET: ${{ secrets.PDF_SERVICES_CLIENT_SECRET }}
         run: |
           if [ "${GITHUB_REF_NAME}" = "main" ]; then
             echo "Refusing to modify the protected main branch — run this on a separate branch."
+            exit 1
+          fi
+          if [ -z "${PDF_SERVICES_CLIENT_ID}" ] || [ -z "${PDF_SERVICES_CLIENT_SECRET}" ]; then
+            echo "Missing Adobe secrets. Add PDF_SERVICES_CLIENT_ID and PDF_SERVICES_CLIENT_SECRET to the repo's Actions secrets."
             exit 1
           fi
           PDF="$(ls data/*.pdf 2>/dev/null | head -1 || true)"
@@ -51,7 +67,7 @@ jobs:
           fi
 
           echo "Converting $PDF → data/timetable.csv"
-          CONV_OUT="$(node scripts/pdf-to-csv.mjs "$PDF" data/timetable.csv)"
+          CONV_OUT="$(node scripts/convert-adobe.mjs "$PDF" data/timetable.csv)"
           echo "$CONV_OUT"
 
           # Semester precedence: workflow_dispatch input > PDF filename (e.g. timetable-2025-S2.pdf)
@@ -86,7 +102,7 @@ jobs:
           if [ -n "$SEM_CHANGED" ]; then git add data/semester.txt; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          MSG="chore: convert ${PDF##*/} → data/timetable.csv"
+          MSG="chore: convert ${PDF##*/} → data/timetable.csv (Adobe)"
           if [ -n "$SEM_CHANGED" ]; then MSG="$MSG (semester $SEM)"; fi
           git commit -m "$MSG"
           git push origin "HEAD:${GITHUB_REF_NAME}"
@@ -95,6 +111,6 @@ jobs:
           # does NOT trigger the "Validate data" workflow, so report the required "validate" status
           # directly on it — otherwise a PR from this branch would wait forever for that check.
           gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/$(git rev-parse HEAD)" \
-            -f state=success -f context=validate -f "description=Validated by Convert timetable PDF" >/dev/null
+            -f state=success -f context=validate -f "description=Validated by Convert timetable PDF (Adobe)" >/dev/null
           echo "Reported validate=success on $(git rev-parse HEAD)."
           echo "Committed to ${GITHUB_REF_NAME}."
