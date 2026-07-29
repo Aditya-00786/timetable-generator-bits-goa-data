@@ -23,15 +23,21 @@ const getDoc = async (pdfBytes) => {
   return pdfjs.getDocument({ data: new Uint8Array(pdfBytes), useSystemFonts: true }).promise;
 };
 
-// Table pages carry many rows, each starting with a 6-digit computer code; front/back matter has
-// none. Return the inclusive [first..last] page range that has ≥3 such codes (so sparse interior
-// pages between them are still kept). Returns null if no table page is found.
+// Table pages carry many course rows; front/back matter has ~none. Return the inclusive
+// [first..last] page range that has ≥3 course numbers (so sparse interior pages between them are
+// still kept). Returns null if no table page is found.
 export const detectTablePages = async (pdfBytes) => {
   const doc = await getDoc(pdfBytes);
   const hits = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const txt = (await (await doc.getPage(p)).getTextContent()).items.map((i) => i.str).join(' ');
-    if ((txt.match(/\b\d{6}\b/g) || []).length >= 3) hits.push(p);
+    // A schedule page has many course numbers AND the per-page column header (STAT + SEC). The
+    // course-number count alone isn't enough — a "Text Book(s)" appendix also lists many course
+    // numbers but has no STAT/SEC header; requiring both excludes it. This is format-agnostic:
+    // some semesters drop the 6-digit computer-code column, so counting codes fails, but every
+    // layout has course numbers and a STAT/SEC header repeated on each page.
+    const courseNumbers = (txt.match(/\b[A-Z]{2,5}\s?[A-Z]?\d{3}[A-Z]?\b/g) || []).length;
+    if (courseNumbers >= 3 && /\bSTAT\b/.test(txt) && /\bSEC\b/.test(txt)) hits.push(p);
   }
   if (hits.length === 0) return null;
   return { start: hits[0], end: hits[hits.length - 1], total: doc.numPages };
@@ -60,7 +66,7 @@ const main = async () => {
   let pages = process.env.PAGES;
   if (!pages) {
     const det = await detectTablePages(pdfBytes);
-    if (!det) { console.error('Could not detect any table pages (no page had ≥3 six-digit codes).'); process.exit(1); }
+    if (!det) { console.error('Could not detect any table pages (no page had ≥3 course numbers).'); process.exit(1); }
     pages = `${det.start}-${det.end}`;
     console.log(`Auto-detected table pages: ${pages} (of ${det.total})`);
   } else {
