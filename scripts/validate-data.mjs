@@ -71,6 +71,19 @@ for (const [file, spec] of Object.entries(SPECS)) {
     continue;
   }
 
+  // SEC must be a plain integer — the DB column is a bigint, so a stray letter (e.g. a source-PDF
+  // typo like SEC="P") would otherwise pass here and only blow up later at the Supabase import.
+  if (fields.includes('SEC')) {
+    const badSec = data
+      .map((row, i) => ({ i, sec: (row.SEC ?? '').toString().trim(), course: row['COURSE NO'], stat: row.STAT }))
+      .filter((r) => !/^\d+$/.test(r.sec));
+    if (badSec.length) {
+      const sample = badSec.slice(0, 5).map((r) => `row ${r.i + 2} ${r.course || ''} ${r.stat || ''} SEC="${r.sec}"`).join('; ');
+      fail(`${file}: ${badSec.length} row(s) with a non-numeric SEC — ${sample}${badSec.length > 5 ? '; …' : ''}`);
+      continue;
+    }
+  }
+
   pass(`${file}: ${data.length} row(s), all required columns present.`);
 }
 
