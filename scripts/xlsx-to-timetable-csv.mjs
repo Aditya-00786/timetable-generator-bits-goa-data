@@ -32,7 +32,9 @@ const canonOf = (h) => {
   if (n.includes('COMCODE') || n.startsWith('COMCO')) return 'COMCODE';
   if (n.includes('LPU')) return 'LPU';
   if (n.includes('INSTRUCTOR')) return 'INSTRUCTOR';
-  if (n.includes('DAYS')) return 'DAYS';
+  // Days/hours column: "DAYS/H" in older layouts, "SCHEDULE" in newer ones. Exclude COMPRE so the
+  // "COMPRE SCHEDULE" (compre date) column isn't captured here — it's handled by the COMPRE rule.
+  if (n.includes('DAYS') || (n.includes('SCHEDULE') && !n.includes('COMPRE'))) return 'DAYS';
   if (n.includes('ROOM')) return 'ROOM';
   if (n.includes('MIDSEM') && n.includes('TIME')) return 'MIDSEM_TIME';
   if (n.includes('MIDSEM') && n.includes('DATE')) return 'MIDSEM_DATE';
