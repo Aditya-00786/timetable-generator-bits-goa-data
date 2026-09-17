@@ -1,0 +1,101 @@
+name: Convert exam PDF (midsem / compre)
+
+# Turns an uploaded exam-schedule PDF into data/midsem.csv or data/compre.csv. Upload the PDF into
+# data/ on a branch (GitHub → Add file → Upload files → "Commit to a new branch") and this converts
+# it and commits the CSV back to that branch; then open a PR → main and the normal
+# Validate data → review → sync flow takes over.
+#
+# ROUTING: this workflow and the timetable converters watch the same path, so they split the work by
+# FILENAME — this one claims PDFs whose name contains "midsem"/"mid sem"/"compre", and the timetable
+# converters skip exactly those. Name exam PDFs accordingly (e.g. "Mid Sem 2026-27.pdf",
+# "Compre 2026-27.pdf"), otherwise the file is treated as a timetable.
+#
+# Unlike the timetable converters this needs no external service (pdfjs only) and never touches
+# data/semester.txt — the timetable owns that. It only warns when the PDF's own semester disagrees.
+#
+# Runs on any branch EXCEPT main (main is branch-protected). The bot commit uses GITHUB_TOKEN, so it
+# does not re-trigger this workflow (no loop).
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - 'data/**.pdf'
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: 'Force the schedule type: midsem or compre. Leave blank to auto-detect.'
+        required: false
+
+permissions:
+  contents: write
+  statuses: write # to report the "validate" status on the bot's commit (see below)
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install # full install — the converter needs the pdfjs-dist dev dependency
+
+      - name: Convert exam PDF → data/midsem.csv or data/compre.csv (validate, then commit back)
+        env:
+          KIND_INPUT: ${{ github.event.inputs.kind }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "Refusing to modify the protected main branch — run this on a separate branch."
+            exit 1
+          fi
+
+          # Claim only exam PDFs; anything else is a timetable and belongs to the Adobe workflow.
+          PDF="$(ls data/*.pdf 2>/dev/null | grep -iE '(mid[ _-]?sem|compre)' | head -1 || true)"
+          if [ -z "$PDF" ]; then
+            echo "No midsem/compre PDF in data/ — nothing for this workflow to do."
+            exit 0
+          fi
+
+          KIND_ARG=""
+          if [ -n "${KIND_INPUT:-}" ]; then
+            KIND_ARG="--kind=${KIND_INPUT}"
+          fi
+
+          echo "Converting $PDF"
+          # The converter picks the output path (data/midsem.csv or data/compre.csv) from the kind it
+          # detects, and prints it on its final "Wrote …" line — read it back rather than guessing.
+          CONV_OUT="$(node scripts/exam-pdf-to-csv.mjs "$PDF" $KIND_ARG)"
+          echo "$CONV_OUT"
+
+          OUT="$(printf '%s\n' "$CONV_OUT" | sed -n 's/^Wrote //p' | tail -1)"
+          if [ -z "$OUT" ] || [ ! -f "$OUT" ]; then
+            echo "Converter did not report an output file — aborting."
+            exit 1
+          fi
+
+          node scripts/validate-data.mjs           # fail the run (before committing) if invalid
+
+          git rm --quiet "$PDF"                     # remove the source PDF; the CSV is the artifact
+          git add "$OUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: convert ${PDF##*/} → ${OUT}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+          # validate-data.mjs already passed above. This commit was pushed with GITHUB_TOKEN, which
+          # does NOT trigger the "Validate data" workflow, so report the required "validate" status
+          # directly on it — otherwise a PR from this branch would wait forever for that check.
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/$(git rev-parse HEAD)" \
+            -f state=success -f context=validate -f "description=Validated by Convert exam PDF" >/dev/null
+          echo "Reported validate=success on $(git rev-parse HEAD)."
+          echo "Committed ${OUT} to ${GITHUB_REF_NAME}."

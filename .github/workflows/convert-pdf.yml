@@ -44,9 +44,11 @@ jobs:
             echo "Refusing to modify the protected main branch — run this on a separate branch."
             exit 1
           fi
-          PDF="$(ls data/*.pdf 2>/dev/null | head -1 || true)"
+          # Skip exam schedules — "Convert exam PDF (midsem / compre)" claims those. Without this a
+          # midsem/compre upload would be converted as a timetable and overwrite data/timetable.csv.
+          PDF="$(ls data/*.pdf 2>/dev/null | grep -viE '(mid[ _-]?sem|compre)' | head -1 || true)"
           if [ -z "$PDF" ]; then
-            echo "No PDF found in data/ — nothing to convert."
+            echo "No timetable PDF found in data/ — nothing to convert."
             exit 0
           fi
 

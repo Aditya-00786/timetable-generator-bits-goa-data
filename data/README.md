@@ -45,6 +45,55 @@ the schema columns (renamed to match), and rejoins wrapped cells. It's best-effo
 review the output against the PDF. See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) for the full
 workflow.
 
+## 🗓️ Generating `midsem.csv` / `compre.csv` from the exam PDF
+
+The exam schedules are published as their own PDFs, separately from the timetable, and the final
+dates often differ from the tentative ones already in `timetable.csv` — which is exactly what these
+override files are for. To convert one:
+
+```bash
+npm install                                        # first time only
+npm run exam -- "path/to/Mid Sem 2026-27.pdf"      # writes data/midsem.csv
+npm run exam -- "path/to/Compre 2026-27.pdf"       # writes data/compre.csv
+```
+
+Midsem vs compre is detected from the table header, then the PDF's title, then the filename; pass
+`--kind=midsem` or `--kind=compre` to force it. A second positional argument overrides the output
+path.
+
+**No clone needed:** upload the PDF into this `data/` folder on GitHub (**Add file → Upload files**
+→ commit to a new branch) and the **Convert exam PDF (midsem / compre)** action converts it on that
+branch automatically, then you open a PR → main.
+
+> ⚠️ **Name the file so it contains `midsem` (or `mid sem`) or `compre`** — e.g.
+> `Mid Sem 2026-27.pdf`, `Compre 2026-27.pdf`. The exam and timetable converters watch the same
+> folder and split the work by filename: anything *not* matching those words is treated as a
+> **timetable** and would overwrite `timetable.csv`.
+
+The converter reconciles the source's inconsistencies with the conventions used in
+`timetable.csv`:
+
+| In the PDF | In the CSV |
+| :--- | :--- |
+| `10/10/2026,Saturday` / `03/10/2026, Saturday` | `10/10/2026, Sat` — always `DD/MM/YYYY, Ddd` |
+| a date with no weekday, or a 2-digit year | weekday derived from the date; year expanded |
+| `NO MID SEM` / `NO COMPRE` | empty date (the literal never appears in `timetable.csv`) |
+| `TBA` | `TBA` (kept — it's a real value) |
+| `BETWEEN 04:00 PM - 07:00 PM` | `04:00 PM - 07:00 PM` |
+| `14/12/2026 (FN)` | date `14/12/2026, Mon` + time `(FN)` |
+| a course number wrapped over two lines | rejoined (`BITS F463/ BITS U463`) |
+| columns we don't store (instructor, com code, remarks) | dropped |
+
+Header wording is matched loosely, so `MIDSEM DATE`, `MIDSEM DATE,DAY` and
+`MID SEM DATE & DAY` are all understood, and any unrecognised column is ignored rather than
+treated as an error.
+
+It prints a report of everything it normalised, plus warnings for anything it could not parse, a
+weekday that disagrees with its date, duplicate course numbers, and notes it had to drop from a
+date cell (e.g. *"No mid sem for RMIT students"* — there's no column for those). **Read that report
+and review the diff before committing** — it's best-effort, and the source PDFs contain occasional
+typos.
+
 ## 📝 Instructions for Committing
 
 1. **Format:** Ensure your files are named exactly `timetable.csv`, `midsem.csv`, or `compre.csv`.

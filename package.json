@@ -9,6 +9,7 @@
     "validate": "node scripts/validate-data.mjs",
     "sync": "node scripts/sync-database.js",
     "pdf": "node scripts/pdf-to-csv.mjs",
+    "exam": "node scripts/exam-pdf-to-csv.mjs",
     "adobe": "node scripts/adobe-convert.mjs",
     "normalize": "node scripts/xlsx-to-timetable-csv.mjs",
     "convert": "node scripts/convert-adobe.mjs"
